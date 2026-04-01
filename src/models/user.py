@@ -1,14 +1,17 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
-class UserCreate(BaseModel):
+class UserBase(BaseModel):
     email: EmailStr
+
+    class Config:
+        orm_mode = True
+
+class UserCreate(UserBase):
+    password: str = Field(..., min_length=8)
+
+class UserLogin(UserBase):
     password: str
 
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-class UserResponse(BaseModel):
+class UserResponse(UserBase):
     id: int
-    email: str
-    # No devolvemos el password_hash por seguridad
+    # password no está aquí por seguridad

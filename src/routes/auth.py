@@ -1,79 +1,76 @@
-from fastapi import APIRouter, HTTPException, Depends
+from datetime import timedelta
+from contextlib import contextmanager
+
+from fastapi import APIRouter, HTTPException
+from mysql.connector import Error as MySQLError
+
 from src.models.user import UserCreate, UserLogin
 from src.services.auth_service import AuthService
 from src.database.db import Database
-import mysql.connector
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-@router.post("/register")
-def register(user_data: UserCreate):
+
+@contextmanager
+def get_db():
     db = Database()
     conn = db.connect()
     if not conn:
         raise HTTPException(status_code=500, detail="Error de conexión a la base de datos")
-    
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
     try:
-        # Encriptamos la contraseña antes de guardar
-        hashed_pwd = AuthService.hash_password(user_data.password)
-        
-        query = "INSERT INTO users (email, password_hash) VALUES (%s, %s)"
-        cursor.execute(query, (user_data.email, hashed_pwd))
+        yield conn, cursor
         conn.commit()
-        
-        return {"message": "Usuario registrado exitosamente en logW"}
-    except mysql.connector.Error as err:
-        if err.errno == 1062: # Error de duplicado en MariaDB
-            raise HTTPException(status_code=400, detail="El email ya existe")
-        raise HTTPException(status_code=500, detail=str(err))
+    except Exception:
+        conn.rollback()
+        raise
     finally:
+        cursor.close()
         db.close()
+
+
+@router.post("/register")
+def register(user_data: UserCreate):
+    hashed_pwd = AuthService.hash_password(user_data.password)
+    with get_db() as (conn, cursor):
+        try:
+            cursor.execute(
+                "INSERT INTO users (email, password_hash) VALUES (%s, %s)",
+                (user_data.email, hashed_pwd),
+            )
+        except MySQLError as err:
+            if getattr(err, "errno", None) == 1062:
+                raise HTTPException(status_code=400, detail="El email ya existe")
+            raise HTTPException(status_code=500, detail=str(err))
+    return {"message": "Usuario registrado exitosamente en logW"}
+
 
 @router.post("/login")
 def login(credentials: UserLogin):
-    db = Database()
-    conn = db.connect()
-    cursor = conn.cursor(dictionary=True)
-    
-    cursor.execute("SELECT * FROM users WHERE email = %s", (credentials.email,))
-    user = cursor.fetchone()
-    db.close()
-
-    if not user or not AuthService.verify_password(credentials.password, user['password_hash']):
+    with get_db() as (_, cursor):
+        cursor.execute(
+            "SELECT email, password_hash FROM users WHERE email = %s",
+            (credentials.email,),
+        )
+        user = cursor.fetchone()
+    if not user or not AuthService.verify_password(credentials.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
-
-    # Si todo está bien, generamos el "carnet" (JWT)
-    token = AuthService.create_access_token(data={"sub": user['email']})
+    token = AuthService.create_access_token(data={"sub": user["email"]})
     return {"access_token": token, "token_type": "bearer"}
+
 
 @router.post("/forgot-password")
 def forgot_password(email: str):
-    db = Database()
-    conn = db.connect()
-    cursor = conn.cursor(dictionary=True)
-    
-    # 1. Verificar si el usuario existe
-    cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
-    user = cursor.fetchone()
-    db.close()
+    with get_db() as (_, cursor):
+        cursor.execute("SELECT email FROM users WHERE email = %s", (email,))
+        user = cursor.fetchone()
 
     if not user:
-        # Por seguridad, a veces es mejor decir que se envió el correo 
-        # aunque el usuario no exista, para evitar "user enumeration".
         return {"message": "Si el email existe, se ha enviado un enlace de recuperación."}
 
-    # 2. Generar un Token de un solo uso (expira en 15 min)
     reset_token = AuthService.create_access_token(
-        data={"sub": user['email'], "action": "password_reset"},
-        expires_delta=timedelta(minutes=15)
+        data={"sub": user["email"], "action": "password_reset"},
+        expires_delta=timedelta(minutes=15),
     )
-
-    # 3. Simulación de envío de correo
-    # En un proyecto real aquí usarías una librería como 'emails' o 'fastapi-mail'
     reset_link = f"https://logw-app.com/reset-password?token={reset_token}"
-    
-    return {
-        "message": "Enlace generado",
-        "debug_link": reset_link  # Esto es para que tú lo pruebes sin configurar email real todavía
-    }
+    return {"message": "Enlace generado", "debug_link": reset_link}

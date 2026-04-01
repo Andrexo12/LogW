@@ -1,8 +1,7 @@
-import mysql.connector
 import os
 from dotenv import load_dotenv
+import mysql.connector
 
-# Cargamos las variables del archivo .env
 load_dotenv()
 
 class Database:
@@ -10,51 +9,31 @@ class Database:
         self.connection = None
 
     def connect(self):
+        if self.connection and self.connection.is_connected():
+            return self.connection
         try:
             self.connection = mysql.connector.connect(
                 host=os.getenv("DB_HOST"),
                 user=os.getenv("DB_USER"),
                 password=os.getenv("DB_PASSWORD"),
-                database=os.getenv("DB_NAME")
+                database=os.getenv("DB_NAME"),
             )
             if self.connection.is_connected():
                 print("✅ Conexión exitosa a MariaDB")
                 return self.connection
         except mysql.connector.Error as e:
             print(f"❌ Error al conectar: {e}")
+            self.connection = None
             return None
 
     def close(self):
         if self.connection and self.connection.is_connected():
             self.connection.close()
             print("🔌 Conexión cerrada.")
-import mysql.connector
-import os
-from dotenv import load_dotenv
+            self.connection = None
 
-# Cargamos las variables del archivo .env
-load_dotenv()
+    def __enter__(self):
+        return self.connect()
 
-class Database:
-    def __init__(self):
-        self.connection = None
-
-    def connect(self):
-        try:
-            self.connection = mysql.connector.connect(
-                host=os.getenv("DB_HOST"),
-                user=os.getenv("DB_USER"),
-                password=os.getenv("DB_PASSWORD"),
-                database=os.getenv("DB_NAME")
-            )
-            if self.connection.is_connected():
-                print("✅ Conexión exitosa a MariaDB")
-                return self.connection
-        except mysql.connector.Error as e:
-            print(f"❌ Error al conectar: {e}")
-            return None
-
-    def close(self):
-        if self.connection and self.connection.is_connected():
-            self.connection.close()
-            print("🔌 Conexión cerrada.")
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()

@@ -1,39 +1,38 @@
-import jwt
 import os
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = lambda: None
+
+import jwt
 
 load_dotenv()
 
-# Configuramos el algoritmo de encriptación para las contraseñas
-# Usamos bcrypt porque es el estándar de la industria
+SECRET_KEY = os.getenv("JWT_SECRET")
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET no encontrado en variables de entorno")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-SECRET_KEY = os.getenv("JWT_SECRET")
-ALGORITHM = "HS256"
 
 class AuthService:
-    
     @staticmethod
     def hash_password(password: str) -> str:
-        """Transforma la contraseña plana en un hash seguro para MariaDB."""
         return pwd_context.hash(password)
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Compara la contraseña que entra con el hash guardado en HeidiSQL."""
         return pwd_context.verify(plain_password, hashed_password)
 
     @staticmethod
-    def create_access_token(data: dict, expires_delta: timedelta = None):
-        """Crea el JWT con los Claims (payload)."""
+    def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
         to_encode = data.copy()
-        if expires_delta:
-            expire = datetime.utcnow() + expires_delta
-        else:
-            expire = datetime.utcnow() + timedelta(minutes=15)
-        
-        to_encode.update({"exp": expire})
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-        return encoded_jwt
+
+        expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+        to_encode["exp"] = expire
+
+        return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
