@@ -3,8 +3,9 @@ from pydantic import BaseModel, EmailStr, Field
 class UserBase(BaseModel):
     email: EmailStr
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True,
+    }
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
