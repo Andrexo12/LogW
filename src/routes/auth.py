@@ -1,7 +1,7 @@
 from datetime import timedelta
 from contextlib import contextmanager
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from mysql.connector import Error as MySQLError
 
 from src.models.user import UserCreate, UserLogin
@@ -74,3 +74,13 @@ def forgot_password(email: str):
     )
     reset_link = f"https://logw-app.com/reset-password?token={reset_token}"
     return {"message": "Enlace generado", "debug_link": reset_link}
+
+@router.get("/me")
+def get_current_user(token: str = Header(None)):
+    # Aquí es donde validaremos el JWT que recibimos del iPhone
+    if not token:
+        raise HTTPException(status_code=401, detail="No estas autorizado, falta el token")
+    
+    # Lógica para decodificar el token y devolver los datos del usuario
+    # (Esto lo podemos programar en un "Dependency Injection" luego)
+    return {"email": "usuario@logw.com", "rol": "admin", "status": "verificado"}
