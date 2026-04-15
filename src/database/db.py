@@ -35,16 +35,14 @@ class Database:
     def __enter__(self):
         return self.connect()
 
- def __exit__(self, exc_type, exc_val, exc_tb):
-    if self.connection and self.connection.is_connected():
-        # 1. Si no hubo errores, guardamos los cambios
-        if exc_type is None:
-            self.connection.commit()
-            print("Cambios guardados (commit).")
-        else:
-            
-            self.connection.rollback()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.connection and self.connection.is_connected():
+            # 1. Si no hubo errores, guardamos los cambios
+            if exc_type is None:
+                self.connection.commit()
+                print("Cambios guardados (commit).")
+            else:
+                self.connection.rollback()
             print("↩Hubo un error, se hizo rollback.")
         
         self.close()
-   
